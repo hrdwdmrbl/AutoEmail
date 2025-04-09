@@ -65,9 +65,11 @@ Draft a professional response to this email using the information from the knowl
 Make sure your response:
 1. Addresses the sender's questions or concerns directly
 2. Includes any relevant information from the knowledge base
-3. Follows the tone and style guidelines in the knowledge base
-4. Is concise and to the point
-5. Is formatted as plain text, ready to be sent as an email
+3. Is concise and to the point
+4. Is formatted as plain text, ready to be sent as an email
+5. DO NOT include the email subject in your response - it will be automatically shown in the email thread
+6. ALWAYS sign the email as "Best regards,\\nMarc Beaupre" - do not use any other closing or signature
+7. NEVER use placeholders like [Your Name] or anything similar in the signature
 
 YOUR RESPONSE:`;
   }

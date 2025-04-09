@@ -87,6 +87,16 @@ export class EmailService {
             subject: parsed.subject || "(No Subject)",
             text: parsed.text || "",
             html: parsed.html || undefined,
+            // Thread handling information
+            // Use the message ID as thread ID (best effort for email clients that don't have native thread IDs)
+            threadId: parsed.messageId,
+            // Store the message ID exactly as received (could be string or array)
+            messageId: parsed.messageId,
+            // Make sure references is always an array
+            references: Array.isArray(parsed.references) ? parsed.references : 
+                        (typeof parsed.references === 'string' ? [parsed.references] : undefined),
+            // Store inReplyTo as is (could be string or array)
+            inReplyTo: parsed.inReplyTo,
           };
 
           emailMessages.push(email);

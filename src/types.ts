@@ -12,6 +12,12 @@ export interface EmailMessage {
   subject: string;
   text: string;
   html?: string;
+  // Additional fields for thread handling
+  threadId?: string;
+  // In Fastmail's implementation, messageId is an array of strings
+  messageId?: string | string[];
+  references?: string[];
+  inReplyTo?: string | string[];
 }
 
 export interface ImapConfig {
@@ -23,8 +29,16 @@ export interface ImapConfig {
   mailbox: string;
 }
 
+export interface JmapConfig {
+  sessionUrl: string;
+  apiKey: string;
+  accountId?: string;
+  emailAddress?: string;
+}
+
 export interface AppConfig {
   imap: ImapConfig;
+  jmap: JmapConfig;
   openaiApiKey: string;
   knowledgeFile: string;
   responsesDir: string;
