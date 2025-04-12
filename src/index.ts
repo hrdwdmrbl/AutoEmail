@@ -60,13 +60,13 @@ async function main() {
         try {
           // We call with empty body initially to see if a draft exists
           const existingDraftId = await jmapService.checkIfDraftExists(email);
-          
+
           if (existingDraftId) {
             console.log(`Draft response for email ${index + 1} already exists with ID: ${existingDraftId}`);
             console.log("Skipping AI response generation...");
             continue; // Skip to the next email
           }
-          
+
           // If no draft exists, generate AI response and create draft
           console.log("No existing draft found. Generating AI response...");
           const response = await aiService.generateResponse(email);

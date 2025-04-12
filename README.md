@@ -29,6 +29,7 @@ An automated email response generator that reads emails via IMAP and creates AI-
 ```
 
 The setup script will:
+
 - Create necessary directories
 - Install dependencies
 - Create a `.env` file from the template if it doesn't exist
@@ -58,7 +59,7 @@ JMAP_ACCOUNT_ID=your_account_id
 OPENAI_API_KEY=your_openai_api_key
 
 # App Configuration
-KNOWLEDGE_FILE=knowledge.txt
+KNOWLEDGE_FILE=knowledge.md
 RESPONSES_DIR=responses
 ```
 
@@ -104,7 +105,7 @@ For more information, see the [Fastmail API documentation](https://www.fastmail.
 
 ## Knowledge File
 
-The knowledge file (`knowledge.txt` by default) contains information used to inform the AI responses. Edit this file to include:
+The knowledge file (`knowledge.md` by default) contains information used to inform the AI responses. Edit this file to include:
 
 - Company information
 - Product details
@@ -121,6 +122,7 @@ npm start
 ```
 
 The application will:
+
 1. Connect to your email via IMAP
 2. Fetch all emails (limited to the most recent 50 by default)
 3. Generate AI responses based on your knowledge file

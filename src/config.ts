@@ -24,7 +24,7 @@ export const config: AppConfig = {
     mailbox: process.env.IMAP_MAILBOX || "INBOX",
   },
   openaiApiKey: process.env.OPENAI_API_KEY!,
-  knowledgeFile: process.env.KNOWLEDGE_FILE || "knowledge.txt",
+  knowledgeFile: process.env.KNOWLEDGE_FILE || "knowledge.md",
   responsesDir: process.env.RESPONSES_DIR || "responses",
   jmap: {
     // Use the explicit session URL if provided, otherwise construct one from the email domain
