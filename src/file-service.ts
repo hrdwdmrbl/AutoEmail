@@ -39,6 +39,7 @@ FROM: ${email.from.name ? email.from.name + ' ' : ''}<${email.from.address}>
 TO: ${email.to.map(recipient => `${recipient.name ? recipient.name + ' ' : ''}<${recipient.address}>`).join(', ')}
 SUBJECT: ${email.subject}
 DATE: ${email.date.toISOString()}
+URGENCY SCORE: ${email.urgencyScore || 'N/A'}
 
 ${'-'.repeat(80)}
 ORIGINAL EMAIL:

@@ -97,6 +97,8 @@ export class EmailService {
                         (typeof parsed.references === 'string' ? [parsed.references] : undefined),
             // Store inReplyTo as is (could be string or array)
             inReplyTo: parsed.inReplyTo,
+            // Initialize urgency score as undefined
+            urgencyScore: undefined,
           };
 
           emailMessages.push(email);
