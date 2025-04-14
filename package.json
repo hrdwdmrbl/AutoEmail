@@ -6,6 +6,7 @@
     "start": "ts-node src/index.ts",
     "build": "tsc",
     "dev": "ts-node-dev --respawn src/index.ts",
+    "prioritize": "ts-node src/prioritize.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
