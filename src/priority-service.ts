@@ -27,8 +27,7 @@ export class PriorityService {
         messages: [{ role: "system", content: prompt }],
       });
 
-      const content =
-        response.choices[0]?.message.content || "";
+      const content = response.choices[0]?.message.content || "";
 
       // Extract the urgency score (format expected: [URGENCY_SCORE: X])
       let urgencyScore = 50; // Default middle score
@@ -58,7 +57,8 @@ ${this.knowledgeContent}
 INCOMING EMAIL:
 From: ${email.from.name ? email.from.name + " " : ""}<${email.from.address}>
 Subject: ${email.subject}
-Date: ${email.date.toISOString()}
+Email date: ${email.date.toISOString()}
+Today's date: ${new Date().toISOString()}
 Body:
 ${email.text}
 

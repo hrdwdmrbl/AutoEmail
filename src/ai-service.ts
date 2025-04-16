@@ -51,7 +51,7 @@ export class AiService {
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: "o3-mini",
+        model: "GPT-4.1",
         messages: [{ role: "system", content: prompt }],
       });
 
