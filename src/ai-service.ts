@@ -28,15 +28,18 @@ export class AiService {
   }
 
   async generateResponse(
-    email: EmailMessage,
+    email: EmailMessage | EmailMessage[],
     scoreOnly: boolean = false
   ): Promise<{ response: string; urgencyScore: number }> {
     if (!this.knowledgeContent) {
       await this.loadKnowledgeBase();
     }
 
-    // Get urgency score from priority service
-    const urgencyScore = await this.priorityService.scoreEmailUrgency(email);
+    // Handle array of emails (from same sender) or single email
+    const emails = Array.isArray(email) ? email : [email];
+
+    // Get urgency score from priority service (use the first email for scoring)
+    const urgencyScore = await this.priorityService.scoreEmailUrgency(emails[0]);
 
     // If we only need the score, return early
     if (scoreOnly) {
@@ -47,11 +50,11 @@ export class AiService {
     }
 
     // Otherwise generate the response
-    const prompt = this.createPrompt(email);
+    const prompt = this.createPrompt(emails);
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: "GPT-4.1",
+        model: "gpt-4.1-2025-04-14",
         messages: [{ role: "system", content: prompt }],
       });
 
@@ -71,7 +74,33 @@ export class AiService {
     }
   }
 
-  private createPrompt(email: EmailMessage): string {
+  private createPrompt(emails: EmailMessage[]): string {
+    // Get sender information from the first email
+    const sender = emails[0].from;
+    const senderInfo = `${sender.name ? sender.name + " " : ""}<${sender.address}>`;
+
+    // For multiple emails, include all of them in the prompt
+    let emailsContent = "";
+    if (emails.length > 1) {
+      emailsContent = emails
+        .map(
+          (email) => `
+Subject: ${email.subject}
+Date: ${email.date.toISOString()}
+Body:
+${email.text}
+---`
+        )
+        .join("\n");
+    } else {
+      // Single email case
+      emailsContent = `
+Subject: ${emails[0].subject}
+Date: ${emails[0].date.toISOString()}
+Body:
+${emails[0].text}`;
+    }
+
     return `
 You are an email assistant responsible for drafting responses to incoming emails.
 Use the knowledge base provided below to inform your responses.
@@ -79,14 +108,13 @@ Use the knowledge base provided below to inform your responses.
 KNOWLEDGE BASE:
 ${this.knowledgeContent}
 
-INCOMING EMAIL:
-From: ${email.from.name ? email.from.name + " " : ""}<${email.from.address}>
-Subject: ${email.subject}
-Date: ${email.date.toISOString()}
-Body:
-${email.text}
+${emails.length > 1 ? "INCOMING EMAILS FROM SAME SENDER:" : "INCOMING EMAIL:"}
+From: ${senderInfo}
+${emailsContent}
 
-Draft a response to this email using the information from the knowledge base.
+Draft a ${
+      emails.length > 1 ? "consolidated response to these emails" : "response to this email"
+    } using the information from the knowledge base.
 
 Your draft email will be reviewed by a human before being sent, so you can leave placeholders in the response for the agent to fill in.
 Draft as much of the email as possible.

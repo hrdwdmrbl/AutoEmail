@@ -61,67 +61,94 @@ async function main() {
     const emails = await emailService.fetchRecentEmails();
     console.log(`Processing ${emails.length} emails`);
 
+    // Group emails by sender address
+    console.log("Grouping emails by sender...");
+    const emailGroups: { [senderAddress: string]: EmailMessage[] } = {};
+    for (const email of emails) {
+      const senderAddress = email.from.address;
+      if (!emailGroups[senderAddress]) {
+        emailGroups[senderAddress] = [];
+      }
+      emailGroups[senderAddress].push(email);
+    }
+
+    // Sort each group by date (newest first)
+    Object.values(emailGroups).forEach(group => {
+      group.sort((a, b) => b.date.getTime() - a.date.getTime());
+    });
+
+    console.log(`Grouped into ${Object.keys(emailGroups).length} sender groups`);
+
     // Array to store processed emails information
     const processedEmails: ProcessedEmail[] = [];
 
-    // Process each email
-    for (const [index, email] of emails.entries()) {
-      console.log(`\nProcessing email ${index + 1}/${emails.length}`);
-      console.log(`From: ${email.from.address}, Subject: ${email.subject}`);
+    // Process each email group
+    let groupIndex = 0;
+    for (const [senderAddress, senderEmails] of Object.entries(emailGroups)) {
+      groupIndex++;
+      console.log(`\nProcessing email group ${groupIndex}/${Object.keys(emailGroups).length}`);
+      console.log(`From: ${senderAddress}, ${senderEmails.length} email(s)`);
 
+      // Use the most recent email for draft checking and responses
+      const primaryEmail = senderEmails[0];
+      
       try {
         // First check if a draft exists by calling JMAP with empty content
         // The method will return the existing draft ID if one exists
         console.log("Checking for existing draft response...");
         try {
           // We call with empty body initially to see if a draft exists
-          const existingDraftId = await jmapService.checkIfDraftExists(email);
+          const existingDraftId = await jmapService.checkIfDraftExists(primaryEmail);
 
           if (existingDraftId) {
-            console.log(`Draft response for email ${index + 1} already exists with ID: ${existingDraftId}`);
+            console.log(`Draft response for sender ${senderAddress} already exists with ID: ${existingDraftId}`);
             
             // Still get urgency score even if draft exists, but only request the score
             console.log("Draft exists, but still scoring email urgency...");
-            const { urgencyScore } = await aiService.generateResponse(email, true);
+            const { urgencyScore } = await aiService.generateResponse(primaryEmail, true);
             
             // Store urgency score in the email object
-            email.urgencyScore = urgencyScore;
+            primaryEmail.urgencyScore = urgencyScore;
             
             // Add to processed emails array with existing draft info
             processedEmails.push({
-              email,
+              email: primaryEmail,
               response: "Existing draft", // Placeholder 
               urgencyScore,
               draftId: existingDraftId
             });
             
-            console.log(`Email scored with urgency: ${urgencyScore}`);
+            console.log(`Email group scored with urgency: ${urgencyScore}`);
             
-            continue; // Skip to the next email, but urgency is now scored
+            continue; // Skip to the next group, but urgency is now scored
           }
 
           // If no draft exists, generate AI response and create draft
           console.log("No existing draft found. Generating AI response...");
-          const { response, urgencyScore } = await aiService.generateResponse(email);
+          
+          // Pass all emails from the same sender to generate a consolidated response
+          const { response, urgencyScore } = await aiService.generateResponse(
+            senderEmails.length > 1 ? senderEmails : primaryEmail
+          );
 
-          // Store urgency score in the email object
-          email.urgencyScore = urgencyScore;
+          // Store urgency score in the primary email object
+          primaryEmail.urgencyScore = urgencyScore;
 
           // Add to processed emails array
           processedEmails.push({
-            email,
+            email: primaryEmail,
             response,
             urgencyScore
           });
 
-          // Save response to file
-          await fileService.saveResponse(email, response);
+          // Save response to file (using the primary email for metadata)
+          await fileService.saveResponse(primaryEmail, response);
 
           // Create draft if JMAP is available
           if (jmapServiceAvailable) {
             console.log("Creating draft response via JMAP...");
-            const draftId = await jmapService.createDraft(email, response);
-            console.log(`Draft response for email ${index + 1} created with ID: ${draftId}`);
+            const draftId = await jmapService.createDraft(primaryEmail, response);
+            console.log(`Draft response for sender ${senderAddress} created with ID: ${draftId}`);
             
             // Update processed email with draft ID
             processedEmails[processedEmails.length - 1].draftId = draftId;
@@ -131,7 +158,7 @@ async function main() {
           console.error("Failed to create draft via JMAP:", jmapError.message || "Unknown error");
         }
       } catch (error) {
-        console.error(`Failed to process email ${index + 1}:`, error);
+        console.error(`Failed to process email group ${groupIndex}:`, error);
       }
     }
 

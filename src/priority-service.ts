@@ -23,7 +23,7 @@ export class PriorityService {
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: "o3-mini",
+        model: "o4-mini",
         messages: [{ role: "system", content: prompt }],
       });
 
