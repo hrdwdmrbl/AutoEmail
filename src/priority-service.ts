@@ -71,9 +71,10 @@ Your task is to score the urgency or severity of this email on a scale from 0 to
 Factor in elements like:
 - Tone (is it demanding, desperate, casual?)
 - Content (what is being requested or reported?)
-- Sender's position (are they a key stakeholder?)
 - Time-sensitive language (deadlines, ASAP mentions)
 - Impact of the issue (how serious would the consequences be if not addressed?)
+- Time since the email was sent. The longer it has been, the more urgent it becomes.
+- Threats - such as of a bad review.
 
 Respond ONLY with the score in this exact format: [URGENCY_SCORE: X] where X is a number from 0-100.
 `;
