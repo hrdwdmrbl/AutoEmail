@@ -14,53 +14,76 @@ export class PriorityService {
     this.knowledgeContent = content;
   }
 
-  async scoreEmailUrgency(email: EmailMessage): Promise<number> {
+  async scoreEmailUrgency(emails: EmailMessage[]): Promise<number> {
     if (!this.knowledgeContent) {
       throw new Error("Knowledge base content is not loaded");
     }
 
-    const prompt = this.createScoringPrompt(email);
+    const prompt = this.createScoringPrompt(emails);
 
-    try {
-      const response = await this.openai.chat.completions.create({
-        model: "o4-mini",
-        messages: [{ role: "system", content: prompt }],
-      });
+    console.log(emails[0].from);
+    console.log(prompt);
 
-      const content = response.choices[0]?.message.content || "";
+    const response = await this.openai.chat.completions.create({
+      model: "o4-mini",
+      messages: [{ role: "system", content: prompt }],
+    });
 
-      // Extract the urgency score (format expected: [URGENCY_SCORE: X])
-      let urgencyScore = 50; // Default middle score
-      const urgencyMatch = content.match(/\[URGENCY_SCORE:\s*(\d+)\]/);
+    const content = response.choices[0]?.message.content || "";
 
-      if (urgencyMatch && urgencyMatch[1]) {
-        const parsedScore = parseInt(urgencyMatch[1], 10);
-        // Ensure score is within 0-100 range
-        urgencyScore = Math.min(100, Math.max(0, parsedScore));
-      }
+    // Extract the urgency score (format expected: [URGENCY_SCORE: X])
+    let urgencyScore = 50; // Default middle score
+    const urgencyMatch = content.match(/\[URGENCY_SCORE:\s*(\d+)\]/);
 
-      return urgencyScore;
-    } catch (error) {
-      console.error("Error generating urgency score:", error);
-      throw new Error("Failed to generate urgency score");
+    if (urgencyMatch && urgencyMatch[1]) {
+      const parsedScore = parseInt(urgencyMatch[1], 10);
+      // Ensure score is within 0-100 range
+      urgencyScore = Math.min(100, Math.max(0, parsedScore));
     }
+
+    return urgencyScore;
   }
 
-  private createScoringPrompt(email: EmailMessage): string {
+  private createScoringPrompt(emails: EmailMessage[]): string {
+    // Get sender information from the first email
+    const sender = emails[0].from;
+    const senderInfo = `${sender.name ? sender.name + " " : ""}<${sender.address}>`;
+
+    // For multiple emails, include all of them in the prompt
+    const emailsContent = emails
+      .map(
+        (email, index) => `
+## Email #${index + 1}:
+
+Subject: ${email.subject}
+Date: ${email.date.toISOString()}
+Body:
+${email.text}
+`
+      )
+      .join("--------\n");
+
     return `
 You are an email assistant responsible for evaluating the urgency of incoming emails.
 Use the knowledge base provided below to inform your evaluations.
 
-KNOWLEDGE BASE:
+# KNOWLEDGE BASE:
+
 ${this.knowledgeContent}
 
-INCOMING EMAIL:
-From: ${email.from.name ? email.from.name + " " : ""}<${email.from.address}>
-Subject: ${email.subject}
-Email date: ${email.date.toISOString()}
+------------
+
+# Incoming emails:
+
+${emails.length} email(s) from the sender
+From: ${senderInfo}
 Today's date: ${new Date().toISOString()}
-Body:
-${email.text}
+
+${emailsContent}
+
+------------
+
+# Instructions:
 
 Your task is to score the urgency or severity of this email on a scale from 0 to 100:
 - 0-25: Low urgency, can be addressed at convenience
@@ -75,6 +98,7 @@ Factor in elements like:
 - Impact of the issue (how serious would the consequences be if not addressed?)
 - Time since the email was sent. The longer it has been, the more urgent it becomes.
 - Threats - such as of a bad review.
+- Number of emails from the same sender.
 
 Respond ONLY with the score in this exact format: [URGENCY_SCORE: X] where X is a number from 0-100.
 `;

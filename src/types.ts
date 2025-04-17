@@ -18,8 +18,6 @@ export interface EmailMessage {
   messageId?: string | string[];
   references?: string[];
   inReplyTo?: string | string[];
-  // Urgency score (0-100)
-  urgencyScore?: number;
 }
 
 export interface ImapConfig {

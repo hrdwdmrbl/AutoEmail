@@ -27,26 +27,9 @@ export class AiService {
     }
   }
 
-  async generateResponse(
-    email: EmailMessage | EmailMessage[],
-    scoreOnly: boolean = false
-  ): Promise<{ response: string; urgencyScore: number }> {
+  async generateResponse(emails: EmailMessage[]): Promise<string> {
     if (!this.knowledgeContent) {
       await this.loadKnowledgeBase();
-    }
-
-    // Handle array of emails (from same sender) or single email
-    const emails = Array.isArray(email) ? email : [email];
-
-    // Get urgency score from priority service (use the first email for scoring)
-    const urgencyScore = await this.priorityService.scoreEmailUrgency(emails[0]);
-
-    // If we only need the score, return early
-    if (scoreOnly) {
-      return {
-        response: "", // Empty response for score-only requests
-        urgencyScore,
-      };
     }
 
     // Otherwise generate the response
@@ -62,16 +45,19 @@ export class AiService {
         response.choices[0]?.message.content || "I apologize, but I was unable to generate a response at this time.";
 
       // Remove the urgency score marker from the response if it exists
-      const cleanResponse = content.replace(/\[URGENCY_SCORE:\s*\d+\]\s*/g, "");
-
-      return {
-        response: cleanResponse,
-        urgencyScore,
-      };
+      return content.replace(/\[URGENCY_SCORE:\s*\d+\]\s*/g, "");
     } catch (error) {
       console.error("Error generating AI response:", error);
       throw new Error("Failed to generate AI response");
     }
+  }
+
+  async scoreEmailUrgency(emails: EmailMessage[]): Promise<number> {
+    if (!this.knowledgeContent) {
+      await this.loadKnowledgeBase();
+    }
+
+    return this.priorityService.scoreEmailUrgency(emails);
   }
 
   private createPrompt(emails: EmailMessage[]): string {
@@ -80,37 +66,40 @@ export class AiService {
     const senderInfo = `${sender.name ? sender.name + " " : ""}<${sender.address}>`;
 
     // For multiple emails, include all of them in the prompt
-    let emailsContent = "";
-    if (emails.length > 1) {
-      emailsContent = emails
-        .map(
-          (email) => `
+    const emailsContent = emails
+      .map(
+        (email, index) => `
+## Email #${index + 1}:
+
 Subject: ${email.subject}
 Date: ${email.date.toISOString()}
 Body:
 ${email.text}
----`
-        )
-        .join("\n");
-    } else {
-      // Single email case
-      emailsContent = `
-Subject: ${emails[0].subject}
-Date: ${emails[0].date.toISOString()}
-Body:
-${emails[0].text}`;
-    }
+`
+      )
+      .join("--------\n");
 
     return `
 You are an email assistant responsible for drafting responses to incoming emails.
 Use the knowledge base provided below to inform your responses.
 
-KNOWLEDGE BASE:
+# KNOWLEDGE BASE:
+
 ${this.knowledgeContent}
 
-${emails.length > 1 ? "INCOMING EMAILS FROM SAME SENDER:" : "INCOMING EMAIL:"}
+------------
+
+# Incoming emails:
+
+${emails.length} email(s) from the sender
 From: ${senderInfo}
+Today's date: ${new Date().toISOString()}
+
 ${emailsContent}
+
+------------
+
+# Instructions:
 
 Draft a ${
       emails.length > 1 ? "consolidated response to these emails" : "response to this email"
@@ -125,8 +114,8 @@ Make sure your response:
 2. Is formatted as plain text, ready to be sent as an email
 3. DO NOT include the email subject in your response - it will be automatically shown in the email thread
 4. ALWAYS sign the email as "Best regards,\\nMarc Beaupre" - do not use any other closing or signature
-5. Don't say anything that you're unsure about - leave placeholders for the agent to fill in. It's worse to be too verbose than too short. Reviewing your drafts takes time, so be considerate of the agent's time.
-6. Always be improving. Leave notes for the agent to update the knowledge base to help you in the future.
+5. Always be improving. Ask questions for the agent if something leaves you unsure.
+6. Don't say anything that you're unsure about - leave placeholders for the agent to fill in. It's worse to be too verbose than too short. Reviewing your drafts takes time, so be considerate of the agent's time.
 
 YOUR RESPONSE:`;
   }
