@@ -32,7 +32,7 @@ export class EmailService {
       await connection.openBox(this.config.mailbox);
 
       // Search for all emails
-      const searchCriteria = ['ALL'];
+      const searchCriteria = ["ALL"];
       const fetchOptions = {
         bodies: ["HEADER", "TEXT", ""],
         markSeen: false,
@@ -93,12 +93,13 @@ export class EmailService {
             // Store the message ID exactly as received (could be string or array)
             messageId: parsed.messageId,
             // Make sure references is always an array
-            references: Array.isArray(parsed.references) ? parsed.references : 
-                        (typeof parsed.references === 'string' ? [parsed.references] : undefined),
+            references: Array.isArray(parsed.references)
+              ? parsed.references
+              : typeof parsed.references === "string"
+              ? [parsed.references]
+              : undefined,
             // Store inReplyTo as is (could be string or array)
             inReplyTo: parsed.inReplyTo,
-            // Initialize urgency score as undefined
-            urgencyScore: undefined,
           };
 
           emailMessages.push(email);
