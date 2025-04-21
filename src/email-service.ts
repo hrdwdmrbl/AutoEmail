@@ -13,7 +13,7 @@ export class EmailService {
    * Connects to the IMAP server and fetches recent emails
    */
   async fetchRecentEmails(limit = 50): Promise<EmailMessage[]> {
-    console.log("Connecting to IMAP server...");
+    // console.log("Connecting to IMAP server...");
 
     const connection = await imaps.connect({
       imap: {
@@ -26,7 +26,7 @@ export class EmailService {
       },
     });
 
-    console.log("Connected to IMAP server");
+    console.log("✅ Connected to IMAP server");
 
     try {
       await connection.openBox(this.config.mailbox);
@@ -39,7 +39,7 @@ export class EmailService {
       };
 
       const messages = await connection.search(searchCriteria, fetchOptions);
-      console.log(`Found ${messages.length} messages`);
+      // console.log(`Found ${messages.length} messages`);
 
       // Process the most recent emails (limited by the 'limit' parameter)
       const recentMessages = messages.slice(0, limit);
@@ -109,7 +109,7 @@ export class EmailService {
       return emailMessages;
     } finally {
       connection.end();
-      console.log("Disconnected from IMAP server");
+      // console.log("Disconnected from IMAP server");
     }
   }
 }

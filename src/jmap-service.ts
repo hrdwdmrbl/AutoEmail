@@ -8,9 +8,11 @@ export class JmapService {
   private config: JmapConfig;
   private sessionData: any = null;
   private accountId: string | null = null;
+  private dryRun: boolean = false;
 
-  constructor(config: JmapConfig) {
+  constructor(config: JmapConfig, dryRun: boolean = false) {
     this.config = config;
+    this.dryRun = dryRun;
   }
 
   /**
@@ -20,12 +22,12 @@ export class JmapService {
     try {
       // Get the session URL (handling redirects if needed)
       const sessionUrl = await this.getSessionUrl();
-      
+
       // Initialize the session
-      console.log(`Connecting to JMAP session at ${sessionUrl}`);
-      const response = await this.makeRequest('get', sessionUrl);
+      // console.log(`Connecting to JMAP session at ${sessionUrl}`);
+      const response = await this.makeRequest("get", sessionUrl);
       this.sessionData = response.data;
-      console.log("JMAP session initialized successfully");
+      console.log("✅ JMAP session initialized successfully");
 
       // Verify the configuration
       await this.validateConfiguration();
@@ -37,7 +39,11 @@ export class JmapService {
   /**
    * Create a draft email response if one doesn't already exist
    */
-  async createDraft(originalEmail: EmailMessage, responseBody: string): Promise<string> {
+  async createDraft(originalEmail: EmailMessage, responseBody: string): Promise<string | null> {
+    if (this.dryRun) {
+      return null;
+    }
+
     if (!this.sessionData) {
       await this.initSession();
     }
@@ -52,13 +58,13 @@ export class JmapService {
       if (!draftMailboxId) {
         throw new Error(
           "Drafts mailbox not found. Available mailboxes: " +
-          mailboxes.map((m) => `${m.name}${m.role ? ` (${m.role})` : ""}`).join(", ")
+            mailboxes.map((m) => `${m.name}${m.role ? ` (${m.role})` : ""}`).join(", ")
         );
       }
 
       // Prepare the email subject (adding Re: prefix if needed)
       const emailSubject = this.createReplySubject(originalEmail.subject);
-      
+
       // Check if a draft already exists for this email
       const existingDraftId = await this.checkForExistingDraft(apiUrl, accountId, draftMailboxId, originalEmail);
       if (existingDraftId) {
@@ -72,7 +78,7 @@ export class JmapService {
       // Get thread references from original email
       // We're intentionally NOT using inReplyTo field since Fastmail rejects it
       const references = this.getThreadReferences(originalEmail);
-      
+
       // Create draft with proper threading via the references field only
       const request = {
         using: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
@@ -82,82 +88,91 @@ export class JmapService {
             {
               accountId,
               create: {
-                "draft1": {
+                draft1: {
                   mailboxIds: { [draftMailboxId]: true },
-                  from: [{ 
-                    name: "Marc Beaupre", 
-                    email: this.config.emailAddress || originalEmail.to[0]?.address || "" 
-                  }],
-                  to: [{ 
-                    name: originalEmail.from.name || "",
-                    email: originalEmail.from.address 
-                  }],
+                  from: [
+                    {
+                      name: "Marc Beaupre",
+                      email: this.config.emailAddress || originalEmail.to[0]?.address || "",
+                    },
+                  ],
+                  to: [
+                    {
+                      name: originalEmail.from.name || "",
+                      email: originalEmail.from.address,
+                    },
+                  ],
                   subject: emailSubject,
-                  bodyValues: { 
-                    "body": { value: responseBody, charset: "utf-8" } 
+                  bodyValues: {
+                    body: { value: responseBody, charset: "utf-8" },
                   },
                   textBody: [{ partId: "body", type: "text/plain" }],
-                  keywords: { "$draft": true },
+                  keywords: { $draft: true },
                   // Use references array for threading WITHOUT inReplyTo
                   // Fastmail specifically rejects inReplyTo but references works
-                  references: references
-                }
-              }
+                  references: references,
+                },
+              },
             },
-            "0"
-          ]
-        ]
+            "0",
+          ],
+        ],
       };
-      
-      console.log('Sending JMAP request to create draft...');
-      const response = await this.makeRequest('post', apiUrl, request);
-      
+
+      console.log("Sending JMAP request to create draft...");
+      const response = await this.makeRequest("post", apiUrl, request);
+
       const methodResponse = response.data.methodResponses[0];
-      
-      if (methodResponse[0] === 'Email/set' && methodResponse[1]?.created?.draft1?.id) {
+
+      if (methodResponse[0] === "Email/set" && methodResponse[1]?.created?.draft1?.id) {
         const draftId = methodResponse[1].created.draft1.id;
         console.log(`Draft created successfully with ID: ${draftId}`);
         return draftId;
       }
-      
-      if (methodResponse[0] === 'Email/set' && methodResponse[1]?.notCreated?.draft1) {
+
+      if (methodResponse[0] === "Email/set" && methodResponse[1]?.notCreated?.draft1) {
         const error = methodResponse[1].notCreated.draft1;
-        
+
         // If references field causes problems, try without it
-        if (error.type === 'invalidProperties' && error.properties?.includes('references')) {
-          console.log('References field rejected, trying without threading properties...');
+        if (error.type === "invalidProperties" && error.properties?.includes("references")) {
+          console.log("References field rejected, trying without threading properties...");
           return this.createSimpleDraft(apiUrl, accountId, draftMailboxId, originalEmail, emailSubject, responseBody);
         }
-        
-        throw new Error(`Server rejected draft creation: ${error.type} - ${error.description || 'No description'}`);
+
+        throw new Error(`Server rejected draft creation: ${error.type} - ${error.description || "No description"}`);
       }
-      
-      throw new Error('Draft creation failed with unexpected response format');
+
+      throw new Error("Draft creation failed with unexpected response format");
     } catch (error) {
       return this.handleError("Failed to create draft email", error);
     }
   }
-  
+
   /**
    * Public method to check if a draft already exists for the given email
    * This can be called separately before generating AI responses
    */
   async checkIfDraftExists(originalEmail: EmailMessage): Promise<string | null> {
+    // In dry-run mode, always return null to indicate no draft exists
+    if (this.dryRun) {
+      return null;
+    }
+
     if (!this.sessionData) {
       await this.initSession();
     }
-    
+
     try {
       const apiUrl = this.sessionData.apiUrl;
       const accountId = await this.getAccountId();
       const mailboxes = await this.getMailboxes(apiUrl, accountId);
       const draftMailboxId = this.findDraftsMailbox(mailboxes);
-      
+
       if (!draftMailboxId) {
         console.log("Drafts mailbox not found, cannot check for existing drafts");
         return null;
       }
-      
+
       // Use the private method to check for existing drafts
       return await this.checkForExistingDraft(apiUrl, accountId, draftMailboxId, originalEmail);
     } catch (error) {
@@ -165,22 +180,22 @@ export class JmapService {
       return null;
     }
   }
-  
+
   /**
    * Check if a draft response already exists for the given email
    */
   private async checkForExistingDraft(
-    apiUrl: string, 
-    accountId: string, 
-    draftMailboxId: string, 
+    apiUrl: string,
+    accountId: string,
+    draftMailboxId: string,
     originalEmail: EmailMessage
   ): Promise<string | null> {
     console.log(`Checking for existing drafts to ${originalEmail.from.address} about "${originalEmail.subject}"`);
-    
+
     try {
       // Prepare the email subject with Re: prefix
       const emailSubject = this.createReplySubject(originalEmail.subject);
-      
+
       // Create a search filter for drafts that match our criteria
       const request = {
         using: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
@@ -195,29 +210,29 @@ export class JmapService {
                   { inMailbox: draftMailboxId },
                   { hasKeyword: "$draft" },
                   { to: originalEmail.from.address },
-                  { subject: emailSubject }
-                ]
+                  { subject: emailSubject },
+                ],
               },
               sort: [{ property: "receivedAt", isAscending: false }],
-              limit: 1
+              limit: 1,
             },
-            "0"
-          ]
-        ]
+            "0",
+          ],
+        ],
       };
-      
-      const response = await this.makeRequest('post', apiUrl, request);
+
+      const response = await this.makeRequest("post", apiUrl, request);
       const methodResponse = response.data.methodResponses[0];
-      
-      if (methodResponse[0] === 'Email/query' && methodResponse[1]?.ids) {
+
+      if (methodResponse[0] === "Email/query" && methodResponse[1]?.ids) {
         const ids = methodResponse[1].ids;
-        
+
         if (ids.length > 0) {
           console.log(`Found existing draft with ID: ${ids[0]}`);
           return ids[0];
         }
       }
-      
+
       console.log("No existing draft found, proceeding with creation");
       return null;
     } catch (error) {
@@ -226,7 +241,7 @@ export class JmapService {
       return null;
     }
   }
-  
+
   /**
    * Create a simple draft without any threading properties
    */
@@ -247,49 +262,53 @@ export class JmapService {
           {
             accountId,
             create: {
-              "draft1": {
+              draft1: {
                 mailboxIds: { [draftMailboxId]: true },
-                from: [{ 
-                  name: "Marc Beaupre", 
-                  email: this.config.emailAddress || originalEmail.to[0]?.address || "" 
-                }],
-                to: [{ 
-                  name: originalEmail.from.name || "",
-                  email: originalEmail.from.address 
-                }],
+                from: [
+                  {
+                    name: "Marc Beaupre",
+                    email: this.config.emailAddress || originalEmail.to[0]?.address || "",
+                  },
+                ],
+                to: [
+                  {
+                    name: originalEmail.from.name || "",
+                    email: originalEmail.from.address,
+                  },
+                ],
                 subject: emailSubject,
-                bodyValues: { "body": { value: responseBody, charset: "utf-8" } },
+                bodyValues: { body: { value: responseBody, charset: "utf-8" } },
                 textBody: [{ partId: "body", type: "text/plain" }],
-                keywords: { "$draft": true }
+                keywords: { $draft: true },
                 // No threading properties at all
-              }
-            }
+              },
+            },
           },
-          "0"
-        ]
-      ]
+          "0",
+        ],
+      ],
     };
-    
-    console.log('Sending simple draft request without threading...');
-    const response = await this.makeRequest('post', apiUrl, request);
-    
+
+    console.log("Sending simple draft request without threading...");
+    const response = await this.makeRequest("post", apiUrl, request);
+
     const methodResponse = response.data.methodResponses[0];
-    
-    if (methodResponse[0] === 'Email/set' && methodResponse[1]?.created?.draft1?.id) {
+
+    if (methodResponse[0] === "Email/set" && methodResponse[1]?.created?.draft1?.id) {
       const draftId = methodResponse[1].created.draft1.id;
       console.log(`Simple draft created successfully with ID: ${draftId}`);
       return draftId;
     }
-    
-    throw new Error('All draft creation attempts failed');
+
+    throw new Error("All draft creation attempts failed");
   }
-  
+
   /**
    * Get thread references for proper reply association
    */
   private getThreadReferences(originalEmail: EmailMessage): string[] {
     const references: string[] = [];
-    
+
     // Add existing references if available
     if (originalEmail.references && originalEmail.references.length > 0) {
       if (Array.isArray(originalEmail.references)) {
@@ -298,39 +317,37 @@ export class JmapService {
         references.push(originalEmail.references as string);
       }
     }
-    
+
     // Add messageId from original email if available
     if (originalEmail.messageId) {
-      const messageId = Array.isArray(originalEmail.messageId) 
-        ? originalEmail.messageId[0] 
-        : originalEmail.messageId;
-        
+      const messageId = Array.isArray(originalEmail.messageId) ? originalEmail.messageId[0] : originalEmail.messageId;
+
       // Add to references if not already there
       if (messageId && !references.includes(messageId)) {
         references.push(messageId);
       }
     }
-    
+
     // If we still don't have any references, try using originalEmail.id with proper formatting
     if (references.length === 0 && originalEmail.id) {
       const formattedId = this.formatMessageId(originalEmail.id);
       references.push(formattedId);
     }
-    
+
     return references;
   }
-  
+
   /**
    * Format an ID as a valid message ID if needed
    */
   private formatMessageId(id: string): string {
     // If already formatted with angle brackets, return as is
-    if (id.startsWith('<') && id.endsWith('>')) {
+    if (id.startsWith("<") && id.endsWith(">")) {
       return id;
     }
-    
+
     // Format with angle brackets
-    const domain = this.extractDomainFromEmail() || 'example.com';
+    const domain = this.extractDomainFromEmail() || "example.com";
     return `<${id}@${domain}>`;
   }
 
@@ -344,25 +361,21 @@ export class JmapService {
   /**
    * Log details about the draft email we're creating
    */
-  private logDraftCreationDetails(
-    originalEmail: EmailMessage, 
-    emailSubject: string, 
-    responseBody: string
-  ): void {
-    console.log('Creating draft with the following data:');
-    console.log('- From:', this.config.emailAddress || originalEmail.to[0]?.address || 'unknown');
-    console.log('- To:', originalEmail.from.address);
-    console.log('- Subject:', emailSubject);
-    console.log('- Content length:', responseBody.length, 'characters');
-    console.log('- Original Email ID:', originalEmail.id || 'unknown');
+  private logDraftCreationDetails(originalEmail: EmailMessage, emailSubject: string, responseBody: string): void {
+    console.log("Creating draft with the following data:");
+    console.log("- From:", this.config.emailAddress || originalEmail.to[0]?.address || "unknown");
+    console.log("- To:", originalEmail.from.address);
+    console.log("- Subject:", emailSubject);
+    console.log("- Content length:", responseBody.length, "characters");
+    console.log("- Original Email ID:", originalEmail.id || "unknown");
   }
-  
+
   /**
    * Extract domain from configured email address
    */
   private extractDomainFromEmail(): string | null {
-    if (this.config.emailAddress && this.config.emailAddress.includes('@')) {
-      return this.config.emailAddress.split('@')[1];
+    if (this.config.emailAddress && this.config.emailAddress.includes("@")) {
+      return this.config.emailAddress.split("@")[1];
     }
     return null;
   }
@@ -372,16 +385,16 @@ export class JmapService {
    */
   private async getSessionUrl(): Promise<string> {
     let sessionUrl = this.config.sessionUrl;
-    
+
     // Handle redirects for .well-known URLs
-    if (sessionUrl.includes('.well-known/jmap')) {
+    if (sessionUrl.includes(".well-known/jmap")) {
       try {
         console.log(`Checking for redirects at ${sessionUrl}...`);
         const headResponse = await axios.head(sessionUrl, {
           maxRedirects: 0,
-          validateStatus: status => status >= 200 && status < 400
+          validateStatus: (status) => status >= 200 && status < 400,
         });
-        
+
         if (headResponse.headers.location) {
           sessionUrl = headResponse.headers.location;
           console.log(`Following redirect to ${sessionUrl}`);
@@ -391,27 +404,27 @@ export class JmapService {
           sessionUrl = redirectError.response.headers.location;
           console.log(`Following redirect to ${sessionUrl}`);
         } else {
-          console.log('No redirects found');
+          console.log("No redirects found");
         }
       }
     }
-    
+
     return sessionUrl;
   }
 
   /**
    * Make a request with proper error handling
    */
-  private async makeRequest(method: 'get' | 'post', url: string, data?: any): Promise<any> {
+  private async makeRequest(method: "get" | "post", url: string, data?: any): Promise<any> {
     try {
       const config = {
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'Content-Type': 'application/json'
-        }
+          Authorization: `Bearer ${this.config.apiKey}`,
+          "Content-Type": "application/json",
+        },
       };
-      
-      if (method === 'get') {
+
+      if (method === "get") {
         return await axios.get(url, config);
       } else {
         return await axios.post(url, data, config);
@@ -430,7 +443,7 @@ export class JmapService {
       console.error("Server Error Response:", {
         status: error.response.status,
         statusText: error.response.statusText,
-        data: error.response.data
+        data: error.response.data,
       });
     } else if (error.request) {
       console.error("No response received from server");
@@ -444,12 +457,10 @@ export class JmapService {
    */
   private handleError(context: string, error: any): never {
     this.logRequestError(error);
-    
-    const errorMessage = error.response?.data?.detail || 
-                        error.response?.data?.message || 
-                        error.message || 
-                        "Unknown error";
-    
+
+    const errorMessage =
+      error.response?.data?.detail || error.response?.data?.message || error.message || "Unknown error";
+
     throw new Error(`${context}: ${errorMessage}`);
   }
 
@@ -472,10 +483,10 @@ export class JmapService {
     if (!apiUrl) {
       throw new Error("JMAP API URL not found in session data");
     }
-    
+
     // Discover account ID
     const accountId = await this.getAccountId();
-    console.log(`Using account ID: ${accountId}`);
+    // console.log(`Using account ID: ${accountId}`);
 
     // Check for mailboxes
     const mailboxes = await this.getMailboxes(apiUrl, accountId);
@@ -488,11 +499,11 @@ export class JmapService {
     if (!draftMailboxId) {
       throw new Error(
         "Drafts mailbox not found. Available mailboxes: " +
-        mailboxes.map((m) => `${m.name}${m.role ? ` (${m.role})` : ""}`).join(", ")
+          mailboxes.map((m) => `${m.name}${m.role ? ` (${m.role})` : ""}`).join(", ")
       );
     }
 
-    console.log(`Drafts mailbox found with ID: ${draftMailboxId}`);
+    // console.log(`Drafts mailbox found with ID: ${draftMailboxId}`);
   }
 
   /**
@@ -503,43 +514,45 @@ export class JmapService {
     if (this.accountId) {
       return this.accountId;
     }
-    
+
     // If account ID is explicitly provided in config, use it
     if (this.config.accountId) {
       this.accountId = this.config.accountId;
       return this.accountId;
     }
-    
+
     // If we have an email address but no session data, discover the account
     if (this.config.emailAddress && this.sessionData) {
       const emailAddress = this.config.emailAddress.toLowerCase();
       const accounts = this.sessionData.accounts || {};
-      
-      console.log(`Looking for account ID for ${emailAddress}...`);
-      
+
+      // console.log(`Looking for account ID for ${emailAddress}...`);
+
       // Try exact match on name or email
       for (const accountId in accounts) {
         const account = accounts[accountId];
-        
-        if ((account.name && account.name.toLowerCase() === emailAddress) ||
-            (account.email && account.email.toLowerCase() === emailAddress)) {
-          console.log(`Found account ID for ${emailAddress}: ${accountId}`);
+
+        if (
+          (account.name && account.name.toLowerCase() === emailAddress) ||
+          (account.email && account.email.toLowerCase() === emailAddress)
+        ) {
+          console.log(`✅ Found account ID for ${emailAddress}: ${accountId}`);
           this.accountId = accountId;
           return accountId;
         }
       }
-      
+
       // Try partial match
       for (const accountId in accounts) {
         const account = accounts[accountId];
-        
+
         if (account.name && account.name.toLowerCase().includes(emailAddress)) {
-          console.log(`Found account ID for ${emailAddress} by partial match: ${accountId}`);
+          console.log(`✅ Found account ID for ${emailAddress} by partial match: ${accountId}`);
           this.accountId = accountId;
           return accountId;
         }
       }
-      
+
       // If only one account, use it
       const accountIds = Object.keys(accounts);
       if (accountIds.length === 1) {
@@ -549,7 +562,7 @@ export class JmapService {
         return accountId;
       }
     }
-    
+
     throw new Error(
       "No account ID provided and auto-discovery failed. Please set JMAP_ACCOUNT_ID or JMAP_EMAIL_ADDRESS."
     );
@@ -562,16 +575,14 @@ export class JmapService {
     if (!accountId) {
       accountId = await this.getAccountId();
     }
-    
+
     try {
       const request = {
         using: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
-        methodCalls: [
-          ["Mailbox/get", { accountId }, "0"]
-        ]
+        methodCalls: [["Mailbox/get", { accountId }, "0"]],
       };
 
-      const response = await this.makeRequest('post', apiUrl, request);
+      const response = await this.makeRequest("post", apiUrl, request);
       return response.data.methodResponses[0][1].list || [];
     } catch (error) {
       return this.handleError("Failed to fetch mailboxes", error);
@@ -585,15 +596,14 @@ export class JmapService {
     // First try by role (standard approach)
     const draftsByRole = mailboxes.find((mailbox) => mailbox.role === "drafts");
     if (draftsByRole) {
-      console.log(`Found drafts mailbox by role: ${draftsByRole.name}`);
+      // console.log(`Found drafts mailbox by role: ${draftsByRole.name}`);
       return draftsByRole.id;
     }
 
     // Try by exact name match
     const draftsNames = ["Drafts", "Draft"];
     for (const name of draftsNames) {
-      const draftsByName = mailboxes.find((mailbox) => 
-        mailbox.name.toLowerCase() === name.toLowerCase());
+      const draftsByName = mailboxes.find((mailbox) => mailbox.name.toLowerCase() === name.toLowerCase());
       if (draftsByName) {
         console.log(`Found drafts mailbox by exact name match: ${draftsByName.name}`);
         return draftsByName.id;
@@ -613,8 +623,10 @@ export class JmapService {
     }
 
     // If we still can't find drafts, log all mailboxes for debugging
-    console.log("Available mailboxes:", 
-      mailboxes.map((m) => `${m.name}${m.role ? ` (${m.role})` : ""}`));
+    console.log(
+      "Available mailboxes:",
+      mailboxes.map((m) => `${m.name}${m.role ? ` (${m.role})` : ""}`)
+    );
 
     // Return null to indicate failure
     return null;

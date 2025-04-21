@@ -1,13 +1,14 @@
 import OpenAI from "openai";
 import { EmailMessage } from "./types";
+import { AiService } from "./ai-service";
 
 export class PriorityService {
-  private openai: OpenAI;
-  private knowledgeContent: string | null = null;
+  private knowledgeContent: string;
+  private aiService: AiService;
 
-  constructor(apiKey: string, knowledgeContent: string | null = null) {
-    this.openai = new OpenAI({ apiKey });
+  constructor(knowledgeContent: string, aiService: AiService) {
     this.knowledgeContent = knowledgeContent;
+    this.aiService = aiService;
   }
 
   setKnowledgeContent(content: string): void {
@@ -21,15 +22,7 @@ export class PriorityService {
 
     const prompt = this.createScoringPrompt(emails);
 
-    console.log(emails[0].from);
-    console.log(prompt);
-
-    const response = await this.openai.chat.completions.create({
-      model: "o4-mini",
-      messages: [{ role: "system", content: prompt }],
-    });
-
-    const content = response.choices[0]?.message.content || "";
+    const content = await this.aiService.promptWithRetry(prompt, "o4-mini");
 
     // Extract the urgency score (format expected: [URGENCY_SCORE: X])
     let urgencyScore = 50; // Default middle score

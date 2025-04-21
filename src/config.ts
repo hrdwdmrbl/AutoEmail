@@ -25,11 +25,19 @@ export const config: AppConfig = {
   },
   openaiApiKey: process.env.OPENAI_API_KEY!,
   knowledgeFile: process.env.KNOWLEDGE_FILE || "knowledge.md",
-  responsesDir: process.env.RESPONSES_DIR || "responses",
   jmap: {
     // Use the explicit session URL if provided, otherwise construct one from the email domain
     sessionUrl: process.env.JMAP_SESSION_URL!,
     apiKey: process.env.JMAP_API_KEY!,
+  },
+  // Enable dry-run mode if DRY_RUN environment variable is set to "true"
+  dryRun: process.env.DRY_RUN === "true",
+  dbConfig: {
+    host: process.env.DB_HOST!,
+    port: parseInt(process.env.DB_PORT || "5432", 10),
+    user: process.env.DB_USER!,
+    password: process.env.DB_PASSWORD!,
+    database: process.env.DB_DATABASE!,
   },
 };
 

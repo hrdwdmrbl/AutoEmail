@@ -10,6 +10,8 @@ An automated email response generator that reads emails via IMAP and creates AI-
 - Uses a knowledge file to inform responses
 - Creates draft responses directly in your email account using JMAP (Fastmail API)
 - Falls back to saving responses as text files if JMAP is not configured
+- Database integration to fetch customer-specific information to enhance AI responses
+- Smart customer matching algorithm to link emails with database records
 
 ## Prerequisites
 
@@ -18,6 +20,7 @@ An automated email response generator that reads emails via IMAP and creates AI-
 - An IMAP-enabled email account
 - OpenAI API key
 - Fastmail account with API key (for JMAP draft creation feature)
+- PostgreSQL database
 
 ## Installation
 
@@ -61,6 +64,16 @@ OPENAI_API_KEY=your_openai_api_key
 # App Configuration
 KNOWLEDGE_FILE=knowledge.md
 RESPONSES_DIR=responses
+
+# Database Configuration (optional)
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=dbpassword
+DB_DATABASE=store_database
+
+# Application Mode
+DRY_RUN=true  # Set to "true" to enable dry-run mode (no drafts created)
 ```
 
 ## JMAP Configuration (Fastmail API)
@@ -113,6 +126,17 @@ The knowledge file (`knowledge.md` by default) contains information used to info
 - Common FAQs
 - Response guidelines
 
+## Database Integration
+
+The application connects to a PostgreSQL database to enhance AI responses with customer-specific information:
+
+1. Set up the database connection in your `.env` file (see Configuration section)
+2. Customer matching uses a hierarchical approach:
+   - First attempts exact email matching
+   - Then tries domain matching (excluding common email providers)
+   - Falls back to fuzzy name matching using Levenshtein distance
+   - As a last resort, uses AI to find the best match
+
 ## Usage
 
 Run the application to process recent unread emails:
@@ -121,13 +145,34 @@ Run the application to process recent unread emails:
 npm start
 ```
 
+### Dry-Run Mode
+
+To test the application without actually creating drafts in your email account, use dry-run mode:
+
+1. Set `DRY_RUN=true` in your `.env` file, or
+2. Run with the environment variable directly:
+
+```bash
+DRY_RUN=true npm start
+```
+
+In dry-run mode:
+- All email processing works normally
+- AI responses are generated as usual
+- Instead of creating drafts in your email account, responses are saved to files
+- Each file contains the full email headers and content
+- Files are saved to the responses directory with a timestamp and sender info
+- This is useful for testing and debugging without affecting your email account
+
+### Normal Operation
+
 The application will:
 
 1. Connect to your email via IMAP
 2. Fetch all emails (limited to the most recent 50 by default)
 3. Generate AI responses based on your knowledge file
 4. If JMAP is configured:
-   - Create draft responses directly in your email account
+   - Create draft responses directly in your email account (unless in dry-run mode)
    - Save backup copies to the responses directory
 5. If JMAP is not configured:
    - Save responses in the responses directory (default: `./responses`)

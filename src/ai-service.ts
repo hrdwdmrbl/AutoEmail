@@ -1,18 +1,26 @@
 import OpenAI from "openai";
 import fs from "fs/promises";
-import { EmailMessage } from "./types";
+import { EmailMessage, ShopifyShop } from "./types";
 import { PriorityService } from "./priority-service";
+import { StoreMappingService } from "./store-mapping-service";
+import { StoreInfoService } from "./store-info-service";
+import { DbService } from "./db-service";
 
 export class AiService {
   private openai: OpenAI;
   private knowledgeFilePath: string;
   private knowledgeContent: string | null = null;
   private priorityService: PriorityService;
+  private storeMappingService: StoreMappingService;
+  private storeInfoService: StoreInfoService;
 
-  constructor(apiKey: string, knowledgeFilePath: string) {
+  constructor(apiKey: string, knowledgeFilePath: string, dbService: DbService) {
     this.openai = new OpenAI({ apiKey });
     this.knowledgeFilePath = knowledgeFilePath;
-    this.priorityService = new PriorityService(apiKey);
+    this.priorityService = new PriorityService(apiKey, this);
+
+    this.storeMappingService = new StoreMappingService(dbService, this);
+    this.storeInfoService = new StoreInfoService(dbService);
   }
 
   async loadKnowledgeBase(): Promise<void> {
@@ -20,9 +28,9 @@ export class AiService {
       this.knowledgeContent = await fs.readFile(this.knowledgeFilePath, "utf-8");
       // Share knowledge content with the priority service
       this.priorityService.setKnowledgeContent(this.knowledgeContent);
-      console.log("Knowledge base loaded successfully");
+      console.log("✅ Knowledge base loaded successfully");
     } catch (error) {
-      console.error("Failed to load knowledge base:", error);
+      console.error("❌ Failed to load knowledge base:", error);
       throw new Error(`Failed to load knowledge base from ${this.knowledgeFilePath}`);
     }
   }
@@ -31,36 +39,54 @@ export class AiService {
     if (!this.knowledgeContent) {
       await this.loadKnowledgeBase();
     }
+    if (!this.storeMappingService.isReady()) {
+      await this.storeMappingService.loadStores();
+    }
+    if (!this.storeInfoService.isReady()) {
+      await this.storeInfoService.loadStoreInfo();
+    }
 
-    // Otherwise generate the response
-    const prompt = this.createPrompt(emails);
+    // Generate the response with store information if available
+    const prompt = await this.createPrompt(emails);
+    const content = await this.promptWithRetry(prompt, "gpt-4.1-2025-04-14");
+
+    // Remove the urgency score marker from the response if it exists
+    return content?.replace(/\[URGENCY_SCORE:\s*\d+\]\s*/g, "");
+  }
+
+  public async promptWithRetry(
+    prompt: string,
+    model: string = "gpt-4.1-2025-04-14",
+    retriesRemaining: number = 3
+  ): Promise<string> {
+    if (retriesRemaining === 0) {
+      throw new Error("Failed to generate AI response");
+    }
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4.1-2025-04-14",
+        model,
         messages: [{ role: "system", content: prompt }],
       });
 
-      const content =
-        response.choices[0]?.message.content || "I apologize, but I was unable to generate a response at this time.";
-
-      // Remove the urgency score marker from the response if it exists
-      return content.replace(/\[URGENCY_SCORE:\s*\d+\]\s*/g, "");
+      return response.choices[0]?.message.content || "";
     } catch (error) {
-      console.error("Error generating AI response:", error);
-      throw new Error("Failed to generate AI response");
+      const err = error as Error;
+      console.error("Error generating AI response:", err.message);
+      if (err.message.includes("429")) {
+        console.log("Rate limit exceeded, retrying...");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        return this.promptWithRetry(prompt, model, retriesRemaining - 1);
+      }
+      throw err;
     }
   }
 
   async scoreEmailUrgency(emails: EmailMessage[]): Promise<number> {
-    if (!this.knowledgeContent) {
-      await this.loadKnowledgeBase();
-    }
-
     return this.priorityService.scoreEmailUrgency(emails);
   }
 
-  private createPrompt(emails: EmailMessage[]): string {
+  private async createPrompt(emails: EmailMessage[]): Promise<string> {
     // Get sender information from the first email
     const sender = emails[0].from;
     const senderInfo = `${sender.name ? sender.name + " " : ""}<${sender.address}>`;
@@ -79,13 +105,25 @@ ${email.text}
       )
       .join("--------\n");
 
+    // Try to fetch store information if services are available
+    let storeInfoContent = "";
+    const shopifyShop = await this.storeMappingService.mapEmailToStore(emails[0]);
+    if (shopifyShop) {
+      console.log(`✅ Found matching store: ${emails[0].from.address} -> ${shopifyShop.name}`);
+      // Get additional store information
+      const fullStoreInfo = this.storeInfoService.getStoreInfo(shopifyShop);
+      storeInfoContent = `\n${JSON.stringify(fullStoreInfo)}\n`;
+    } else {
+      console.log(`❌ No matching store found for ${senderInfo}`);
+    }
+
     return `
 You are an email assistant responsible for drafting responses to incoming emails.
 Use the knowledge base provided below to inform your responses.
 
 # KNOWLEDGE BASE:
 
-${this.knowledgeContent}
+${this.knowledgeContent}${storeInfoContent}
 
 ------------
 

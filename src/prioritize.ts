@@ -20,12 +20,12 @@ async function main() {
     // Load knowledge base
     const knowledgeContent = await fs.readFile(config.knowledgeFile, "utf-8");
     priorityService.setKnowledgeContent(knowledgeContent);
-    console.log("Knowledge base loaded successfully");
+    console.log("✅ Knowledge base loaded successfully");
 
     // Fetch recent emails
-    console.log("Fetching recent emails...");
+    // console.log("Fetching recent emails...");
     const emails = await emailService.fetchRecentEmails();
-    console.log(`Processing ${emails.length} emails`);
+    console.log(`✅ Fetched ${emails.length} emails`);
 
     // Group emails by sender address
     const emailGroups: { [senderAddress: string]: EmailMessage[] } = emails.reduce(
