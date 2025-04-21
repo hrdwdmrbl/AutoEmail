@@ -92,13 +92,14 @@ Your task is to score the urgency or severity of this email on a scale from 0 to
 - 76-100: Critical urgency, requires immediate attention
 
 Factor in elements like:
-- Tone (is it demanding, desperate, casual?)
-- Content (what is being requested or reported?)
-- Time-sensitive language (deadlines, ASAP mentions)
-- Impact of the issue (how serious would the consequences be if not addressed?)
+- Tone - Is it desperate, casual, frantic, relaxed, etc?
+- Content - What is being requested or reported?
+- Time-sensitive language. For example, deadlines, ASAP mentions, etc.
+- Existing impact of the issue (how serious is the issue already?)
+- Future impact of the issue (how serious would the consequences be if not addressed?)
 - Time since the email was sent. The longer it has been, the more urgent it becomes.
 - Threats - such as of a bad review.
-- Number of emails from the same sender.
+- Number of emails from the same sender. More emails mean more urgent.
 
 Respond ONLY with the score in this exact format: [URGENCY_SCORE: X] where X is a number from 0-100.
 `;
