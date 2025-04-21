@@ -12,7 +12,7 @@ interface ProcessedEmail {
 }
 
 async function main() {
-  console.log("Starting AutoEmail application...");
+  // console.log("Starting AutoEmail application...");
 
   // Display dry-run mode message if enabled
   if (config.dryRun) {
