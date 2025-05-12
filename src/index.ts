@@ -2,7 +2,6 @@ import { config } from "./config";
 import { EmailService } from "./email-service";
 import { AiService } from "./ai-service";
 import { JmapService } from "./jmap-service";
-import { DbService } from "./db-service";
 import { EmailMessage } from "./types";
 
 interface ProcessedEmail {
@@ -20,13 +19,9 @@ async function main() {
   }
 
   try {
-    // Initialize database service if configured
-    const dbService = new DbService(config.dbConfig);
-    await dbService.init();
-
     // Initialize services
     const emailService = new EmailService(config.imap);
-    const aiService = new AiService(config.openaiApiKey, config.knowledgeFile, dbService);
+    const aiService = new AiService(config.openaiApiKey, config.knowledgeFile, config.dbConfig);
 
     // Initialize JMAP service if configuration is available
     const jmapService = new JmapService(config.jmap, config.dryRun);
@@ -58,7 +53,7 @@ async function main() {
     }
 
     // Load knowledge base
-    await aiService.loadKnowledgeBase();
+    await aiService.init();
 
     // Fetch recent emails
     // console.log("Fetching recent emails...");
@@ -151,12 +146,6 @@ async function main() {
       });
 
     // console.log("\nEmail processing completed successfully");
-
-    // Close database connection if it was opened
-    if (dbService) {
-      await dbService.close();
-      // console.log("Database connection closed");
-    }
   } catch (error) {
     console.error("Application error:", error);
     process.exit(1);

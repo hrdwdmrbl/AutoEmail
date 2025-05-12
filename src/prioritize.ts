@@ -1,8 +1,7 @@
 import { config } from "./config";
 import { EmailService } from "./email-service";
-import { PriorityService } from "./priority-service";
-import fs from "fs/promises";
 import { EmailMessage } from "./types";
+import { AiService } from "./ai-service";
 
 type SenderGroupScore = {
   emails: EmailMessage[];
@@ -15,12 +14,11 @@ async function main() {
   try {
     // Initialize services
     const emailService = new EmailService(config.imap);
-    const priorityService = new PriorityService(config.openaiApiKey);
+
+    const aiService = new AiService(config.openaiApiKey, config.knowledgeFile, config.dbConfig);
 
     // Load knowledge base
-    const knowledgeContent = await fs.readFile(config.knowledgeFile, "utf-8");
-    priorityService.setKnowledgeContent(knowledgeContent);
-    console.log("✅ Knowledge base loaded successfully");
+    await aiService.init();
 
     // Fetch recent emails
     // console.log("Fetching recent emails...");
@@ -55,7 +53,7 @@ async function main() {
         console.log(`From: ${senderAddress}, ${senderEmails.length} email(s)`);
 
         // Get urgency score for the group
-        const urgencyScore = await priorityService.scoreEmailUrgency(senderEmails);
+        const urgencyScore = await aiService.scoreEmailUrgency(senderEmails);
 
         // Add to scored emails array (one entry per sender)
         return { emails: senderEmails, urgencyScore };

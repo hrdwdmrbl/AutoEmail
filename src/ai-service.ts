@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import fs from "fs/promises";
-import { EmailMessage, ShopifyShop } from "./types";
+import { DbConfig, EmailMessage, ShopifyShop } from "./types";
 import { PriorityService } from "./priority-service";
 import { StoreMappingService } from "./store-mapping-service";
 import { StoreInfoService } from "./store-info-service";
@@ -13,17 +13,22 @@ export class AiService {
   private priorityService: PriorityService;
   private storeMappingService: StoreMappingService;
   private storeInfoService: StoreInfoService;
+  private dbService: DbService;
 
-  constructor(apiKey: string, knowledgeFilePath: string, dbService: DbService) {
+  constructor(apiKey: string, knowledgeFilePath: string, dbConfig: DbConfig) {
     this.openai = new OpenAI({ apiKey });
     this.knowledgeFilePath = knowledgeFilePath;
     this.priorityService = new PriorityService(apiKey, this);
 
-    this.storeMappingService = new StoreMappingService(dbService, this);
-    this.storeInfoService = new StoreInfoService(dbService);
+    this.dbService = new DbService(dbConfig);
+
+    this.storeMappingService = new StoreMappingService(this.dbService, this);
+    this.storeInfoService = new StoreInfoService(this.dbService);
   }
 
-  async loadKnowledgeBase(): Promise<void> {
+  async init(): Promise<void> {
+    await this.dbService.init();
+
     try {
       this.knowledgeContent = await fs.readFile(this.knowledgeFilePath, "utf-8");
       // Share knowledge content with the priority service
@@ -37,7 +42,7 @@ export class AiService {
 
   async generateResponse(emails: EmailMessage[]): Promise<string> {
     if (!this.knowledgeContent) {
-      await this.loadKnowledgeBase();
+      await this.init();
     }
     if (!this.storeMappingService.isReady()) {
       await this.storeMappingService.loadStores();
