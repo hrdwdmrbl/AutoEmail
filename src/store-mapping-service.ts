@@ -103,8 +103,15 @@ export class StoreMappingService {
    * Find a store by fuzzy name matching
    */
   private findStoreByFuzzyName(name: string): ShopifyShop | null {
-    const results = this.shopify_shops.sort((shop) => this.distanceRatio(shop.name, name));
+    if (!name) return null;
+
+    const results = this.shopify_shops
+      .filter((shop) => shop.name)
+      .sort((shop) => {
+        return this.distanceRatio(shop.name, name);
+      });
     const bestMatch = results[0];
+
     const ratio = this.distanceRatio(bestMatch.name, name);
     if (ratio < 0.9) {
       return null;
